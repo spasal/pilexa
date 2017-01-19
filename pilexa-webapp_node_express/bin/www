@@ -1,0 +1,126 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('pilexa-webapp-node-express-v4:server');
+var http = require('http');
+var awsIot = require('aws-iot-device-sdk');
+var AWS = require('aws-sdk');
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '80');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+
+var config = {};
+
+// config.IOT_BROKER_ENDPOINT      = "XXXXXX.iot.us-east-1.amazonaws.com".toLowerCase();
+config.IOT_BROKER_ENDPOINT      = "a3o1ied5wjxghu.iot.us-east-1.amazonaws.com".toLowerCase(),
+config.IOT_BROKER_REGION        = "us-east-1",
+config.IOT_THING_NAME           = "Pilexa-KNXBridge",
+    config.AWS_KEY              = "AKIAJLFCH4JPKLBS7SCQ",
+    config.AWS_SECRET               = "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",
+    config.SNS_REGION               = "us-east-1";
+
+var device = awsIot.device({
+  keyPath: './certs/Webapp.private.pem.key',
+  certPath: './certs/Webapp.cert.pem.crt',
+  caPath: './certs/root-CA.crt',
+  clientId: 'Tutorial',
+  region: 'us-east-1',
+  host: config.IOT_BROKER_ENDPOINT
+});
+
+device
+    .on('connect', function() {
+      console.log('connected_dev');
+      device.subscribe('$aws/things/Pilexa-KNXBridge/shadow/update', function (error, result) {
+        console.log("getshadow", result);
+      })
+    });
+
+var iotData = new AWS.IotData({endpoint: config.IOT_BROKER_ENDPOINT, region: config.SNS_REGION});
+
+
+var io = require('socket.io')(server);
+require('../main.js')(io, device, iotData);
+
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}

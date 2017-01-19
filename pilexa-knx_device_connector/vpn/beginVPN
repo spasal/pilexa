@@ -1,0 +1,7 @@
+#! /bin/bash
+# first script
+# begin vpn
+
+sudo openvpn --mktun --dev tun1
+sudo ifconfig tun1 up
+sudo openconnect vpn.howest.be --authgroup=howest --interface=tun1 --user=alex.spassov.simeonov@student.howest.be
