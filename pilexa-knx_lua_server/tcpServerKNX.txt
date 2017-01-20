@@ -1,0 +1,148 @@
+-- init server handler
+if not ready then
+  require('copas')
+ 
+  -- list of client sockets
+  clients = {}
+ 
+  -- incoming data handler
+  function datahandler(sock, data)
+    local ip, port
+    ip, port = sock:getpeername()
+    alert('[server] data from %s:%d - %s', ip, port, data)
+    
+    alert("/start/")
+    sock:send("/start/")
+
+    knxhandler(sock,data)
+    
+    alert("/end/")
+    sock:send("/end/")
+  end
+  
+ -- connection handler
+  function connhandler(sock)
+    -- enable keep-alive to check for disconnect events
+    sock:setoption('keepalive', true)
+ 
+    local ip, port, data, err, id
+ 
+    -- get ip and port from socket
+    ip, port = sock:getpeername()
+ 
+    -- client id
+    id = string.format('%s:%d', ip, port)
+ 
+    alert('[server] connection from %s', id)
+ 
+    -- save socket reference
+    clients[ id ] = sock
+ 
+    -- main reader loop
+    while true do
+      -- wait for single line of data (until \n, \r is ignored)
+      data, err = copas.receive(sock, '*l')
+  
+    
+      -- error while receiving
+      if err then
+        alert('[server] closed connection from %s:%d', ip, port)
+        -- remove socket reference
+        clients[ id ] = nil
+        return
+      end
+ 
+      -- handle data frame
+      datahandler(sock, data)
+    end
+  end
+ 
+  -- bind to port 12345
+  tcpserver = socket.bind('*', 12345)
+ 
+  -- error while binding, try again later
+  if not tcpserver then
+    os.sleep(5)
+    error('[server] error: cannot bind')
+  end
+  
+    -- start groepfuncties
+  function knxhandler(sock,data)
+
+    -- interpreter json
+    json = data
+    alert("data " .. json)
+    index = 0
+    
+    address = ""
+    value = ""
+    iswrite = ""
+    
+    -- split json into correct values
+    for val in string.gmatch(json, '([^"]*)"') do
+      
+      if index == 3 then
+        address = val
+      elseif index == 7 then
+        value = val
+      elseif index == 11 then
+        iswrite = val
+      end
+      
+      index = index + 1
+      
+    end   
+    
+    alert("address " .. address)
+    alert("value " .. value)
+    alert("iswrite " .. iswrite)
+    
+    -- knx read/write logic
+    if iswrite == "1" then
+      alert("writing to " .. address .. " : " .. value)
+      grp.write(address, value)
+      answer = '/answer/{' .. address .. ', ' .. value .. '}/answer/ \r \n'
+      sock:send(answer)
+    else
+      alert("reading " .. address)
+      -- get value of object with group address 1/1/1
+      value = grp.getvalue(address)
+      alert("reading try1: " .. val)
+
+      answer = '/answer/{adress:"' .. address .. '", value:"' .. val .. '"} READ/answer/ \r \n'
+      alert(answer)
+      sock:send(answer)
+    end
+
+      
+    if data == 'temperatuur' then
+      sock:send('read on group\n')
+      grp.read('1/0/0')
+    end
+  end
+    -- einde groepsfuncties
+
+  -- set server connection handler
+  copas.addserver(tcpserver, connhandler)
+ 
+  -- create local udp server on port 23456
+  udpserver = socket.udp()
+  udpserver:setsockname('127.0.0.1', 23456)
+ udpserver:settimeout(0.1)
+ 
+  ready = true
+end
+ 
+-- perform server tasks for one second (5 x (0.1 + 0.1))
+for i = 1, 5 do
+  message = udpserver:receive()
+ 
+  -- got message from udp, send to all active clients
+if message then
+   for id, sock in pairs(clients) do
+      sock:send(message .. '\r\n')
+   end
+ end
+ 
+  copas.step(0.1)
+end
